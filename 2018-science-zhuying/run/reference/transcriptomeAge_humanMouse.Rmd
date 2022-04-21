@@ -1,0 +1,620 @@
+---
+title: "transcriptiome_humanMouse_moreira"
+output: html_document
+---
+
+
+## 这个脚本用于预测鼠在人中对应的年龄。
+
+## 这个脚本用moreira文章中人的forebrain数据的年龄（天数）对protein-coding基因RPKM建模，并用zhuying文章中人的neocortex数据作为预测数据进行预测验证，选取一个合适的model。这个脚本将会考虑几个因素进行不同的建模尝试。
+# 1. 不同的alpha值
+# 2. 不同的年龄分界点分割的moreira人forebrain数据作为预测变量（可以只关注发育早期，目前考虑出生前后（人P0的数据））
+
+## 最终，用moreira文章中鼠的forebrain/brain数据预测鼠在人中的年龄。
+## 最终，该脚本还会绘制预测年龄和实际年龄之间的correlation图（散点图），可视化预测的准确性
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(glmnet)
+library(rgl)
+options(rgl.printRglwidget = TRUE)
+```
+
+#### 0. Function
+```{r func}
+### 计算预测样本的MAE
+chooseFit <- function(x,y,alpha,foldid,newx,newy,lambdaType){
+  cvfit <- cv.glmnet(x=x,y=y,alpha=alpha,foldid =foldid)
+  pred <- predict(cvfit,newx=newx,s=lambdaType)
+  mae.0 <- Metrics::mae(actual=newy,predicted=as.data.frame(pred)[,lambdaType])
+  return(mae.0)
+}
+```
+
+####  读入zhuying & moreira data
+
+```{r rpkm1}
+rpkm.merge2.zhuHNeo.t <- readRDS("rds/rpkm.merge2.brain.zhuHNeo.1.rds")
+rpkm.merge2.moreiraHBrain.t <- readRDS("rds/rpkm.merge2.brain.moreiraHBrain.1.rds")
+rpkm.merge2.moreiraRBrain.t <- readRDS("rds/rpkm.merge2.brain.moreiraRBrain.1.rds")
+rpkm.merge2.moreiraMBrain.t <- readRDS("rds/rpkm.merge2.brain.moreiraMBrain.1.rds")
+```
+
+```{r meta1}
+age.merge2.zhuHNeo <- readRDS("rds/age.merge2.brain.zhuHNeo.rds")
+age.merge2.moreiraHBrain <- readRDS("rds/age.merge2.brain.moreiraHBrain.rds")
+age.merge2.moreiraRBrain <- readRDS("rds/age.merge2.brain.moreiraRBrain.rds")
+age.merge2.moreiraMBrain <- readRDS("rds/age.merge2.brain.moreiraMBrain.rds")
+```
+
+###############################################################
+
+### 用Zhuying人Neocortex （<=997天（2year））Predict --- s1 ###
+
+###############################################################
+
+#### 1. 取上述各数据样本Subset (zhuying人两岁前的样本(<=997))
+
+```{r rpkm2}
+rpkm.merge2.zhuHNeo.t.s1 <- rpkm.merge2.zhuHNeo.t[age.merge2.zhuHNeo <= 997,]
+rpkm.merge2.moreiraHBrain.t.s1 <- rpkm.merge2.moreiraHBrain.t[age.merge2.moreiraHBrain <= 997,]
+rpkm.merge2.moreiraRBrain.t.s1 <- rpkm.merge2.moreiraRBrain.t[age.merge2.moreiraRBrain <= 997,]
+rpkm.merge2.moreiraMBrain.t.s1 <- rpkm.merge2.moreiraMBrain.t[age.merge2.moreiraMBrain <= 997,]
+
+saveRDS(rpkm.merge2.zhuHNeo.t.s1,"rds/rpkm.merge2.brain.zhuHNeo.le997.1.rds")
+saveRDS(rpkm.merge2.moreiraHBrain.t.s1,"rds/rpkm.merge2.brain.moreiraHBrain.le997.1.rds")
+saveRDS(rpkm.merge2.moreiraRBrain.t.s1,"rds/rpkm.merge2.brain.moreiraRBrain.le997.1.rds")
+saveRDS(rpkm.merge2.moreiraMBrain.t.s1,"rds/rpkm.merge2.brain.moreiraMBrain.le997.1.rds")
+```
+
+```{r meta2}
+age.merge2.zhuHNeo.s1 <- age.merge2.zhuHNeo[age.merge2.zhuHNeo <= 997]
+age.merge2.moreiraHBrain.s1 <- age.merge2.moreiraHBrain[age.merge2.moreiraHBrain <= 997]
+age.merge2.moreiraRBrain.s1 <- age.merge2.moreiraRBrain[age.merge2.moreiraRBrain <= 997]
+age.merge2.moreiraMBrain.s1 <- age.merge2.moreiraMBrain[age.merge2.moreiraMBrain <= 997]
+
+saveRDS(age.merge2.zhuHNeo.s1,"rds/age.merge2.brain.zhuHNeo.le997.rds")
+saveRDS(age.merge2.moreiraHBrain.s1,"rds/age.merge2.brain.moreiraHBrain.le997.rds")
+saveRDS(age.merge2.moreiraRBrain.s1,"rds/age.merge2.brain.moreiraRBrain.le997.rds")
+saveRDS(age.merge2.moreiraMBrain.s1,"rds/age.merge2.brain.moreiraMBrain.le997.rds")
+```
+
+
+#### 2. 系统探究选择模型 
+
+#### 考虑以下几个因素，选择MAE最好的模型用于小鼠样本天数预测：
+#（1）不同年龄阈值下的moreira人forebrain样本
+#（2）不同lambda
+#（3）不同lambda type（lambda.min/lambda.1se）
+#（4）用于验证的zhuying人Neocortex的样本年龄阈值为<997天（出生前后样本）
+
+# 根据MAE结果，最终选择的模型如下
+# a. 年龄阈值：
+# b. lambda:
+# c. lambdaType:
+
+## 2.1 计算MAE以选择模型
+
+```{r chooseModel1}
+
+#### 取不同年龄阈值下的zhuying neocortex样本
+
+rpkm.merge2.moreiraHBrain.t.s <- list()
+age.merge2.moreiraHBrain.s <- list()
+
+range1 <- unique(age.merge2.moreiraHBrain)
+
+for (r in range1) {
+  r1 <- as.character(r)
+  rpkm.merge2.moreiraHBrain.t.s[[r1]] <- rpkm.merge2.moreiraHBrain.t[age.merge2.moreiraHBrain <= r,]
+  age.merge2.moreiraHBrain.s[[r1]] <- age.merge2.moreiraHBrain[age.merge2.moreiraHBrain <= r]
+}
+
+
+#### 计算多个参数组合下的MAE
+
+### Calculate MAE
+mae.s <- list()
+
+for (r in 487) {
+  
+  r1 <- as.character(r)
+  
+  foldid <- sample(1:10, size = nrow(rpkm.merge2.moreiraHBrain.t.s[[r1]]), replace = TRUE)
+
+  for(a in seq(0,1,0.1)){
+    
+    a1 <- as.character(a)
+    
+    for (lt in c("lambda.min","lambda.1se")) {
+      
+    tryCatch({ mae.s[[r1]][[a1]][[lt]] <- chooseFit(x=rpkm.merge2.moreiraHBrain.t.s[[r1]],
+                                       y=log2(age.merge2.moreiraHBrain.s[[r1]]),
+                                       alpha = a,
+                                       foldid = foldid,
+                                       newx = rpkm.merge2.zhuHNeo.t.s1,
+                                       newy = log2(age.merge2.zhuHNeo.s1),
+                                       lambdaType = lt)},
+             error = function(x) { message('Error @ ',x) ; return(NA) },
+             finally = { message('next...')}
+             )
+    }
+  }
+}
+
+### MAE to df
+
+mae.df.s <- as.data.frame(mae.s) %>%
+  t() %>% as.data.frame() %>% 
+  rownames_to_column('parameter') %>% 
+  setNames(c("parameter","mae")) %>% 
+  mutate(day = sub("X(\\w+).*","\\1",parameter),
+         alpha = sub("X\\w+\\.(.*?)\\.lambda.*","\\1",parameter),
+         lambdaType = sub("X\\w+\\..*?\\.(lambda.*)","\\1",parameter)) %>% 
+  select(c(day, alpha, lambdaType,mae))
+mae.df.s$day <- as.numeric(mae.df.s$day)
+mae.df.s$alpha <- as.numeric(mae.df.s$alpha)
+
+### Plot MAE
+
+# lambda.min - rgl
+plot3d(x=as.numeric(mae.df.s$day[mae.df.s$lambdaType == "lambda.min"]),
+       y=as.numeric(mae.df.s$alpha[mae.df.s$lambdaType == "lambda.min"]) * 1000,
+       z = mae.df.s$mae[mae.df.s$lambdaType == "lambda.min"],
+       type = 's',
+       radius = 100,
+       col = "royalblue1",
+       xlab = "day",
+       ylab = "alpha*1000",
+       zlab = "mae")
+
+# lambda.1se - rgl
+plot3d(x=as.numeric(mae.df.s$day[mae.df.s$lambdaType == "lambda.1se"]),
+       y=as.numeric(mae.df.s$alpha[mae.df.s$lambdaType == "lambda.1se"]) * 1000,
+       z = mae.df.s$mae[mae.df.s$lambdaType == "lambda.1se"],
+       type = 's',
+       radius = 100,
+       col = "royalblue1",
+       xlab = "day",
+       ylab = "alpha*1000",
+       zlab = "mae")
+
+### Save 
+saveRDS(mae.s,"rds/mae.cvfit-merge2_brain_moreiraHBrain_leAll.lst.rds")
+saveRDS(mae.df.s,"rds/mae.cvfit-merge2_brain_moreiraHBrain_leAll.df.rds")
+```
+
+### 2.2 选择模型
+```{r selectModel}
+
+## Model-1 
+mae.df.s[mae.df.s$day <= 5000,][which(mae.df.s[mae.df.s$day <= 5000,]$mae == min(mae.df.s[mae.df.s$day <= 5000,]$mae)),]
+#     day alpha lambdaType       mae
+# 349 3186   0.9 lambda.min 0.3987284
+
+## Model-2
+mae.df.s[which(mae.df.s$mae == min(mae.df.s$mae)),]
+#     day alpha lambdaType       mae
+# 18516 0.3 lambda.min 0.3083318
+
+mae.df.s[mae.df.s$day <= 997,][which(mae.df.s[mae.df.s$day <= 997,]$mae == min(mae.df.s[mae.df.s$day <= 997,]$mae)),]
+#     day alpha lambdaType       mae
+# 533	487	0.2	lambda.min	0.4387972
+
+```
+
+### 2.3 Fit 模型
+
+```{r fitModel}
+
+#### Model-1
+### 根据上述MAE结果，选取模型如下 Model-1
+### 1. 3186天
+### 2. alpha：0.9
+### 3. lambda.min
+
+cvfit.v1 <- cv.glmnet(x=rpkm.merge2.moreiraHBrain.t.s$`3186`,
+                      y=log2(age.merge2.moreiraHBrain.s$`3186`),
+                      alpha=0.9)
+saveRDS(cvfit.v1,"rds/cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+
+#### Model-2
+### 根据上述MAE结果，选取模型如下 Model-1
+### 1. 18516天
+### 2. alpha：0.3
+### 3. lambda.min
+
+cvfit.v2 <- cv.glmnet(x=rpkm.merge2.moreiraHBrain.t.s$`18516`,
+                      y=log2(age.merge2.moreiraHBrain.s$`18516`),
+                      alpha=0.3)
+saveRDS(cvfit.v2,"rds/cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+
+#### Model-3
+### 根据上述MAE结果，选取模型如下 Model-1
+### 1. 487天
+### 2. alpha：0.2
+### 3. lambda.min
+
+cvfit.v3 <- cv.glmnet(x=rpkm.merge2.moreiraHBrain.t.s$`487`,
+                      y=log2(age.merge2.moreiraHBrain.s$`487`),
+                      alpha=0.2)
+saveRDS(cvfit.v3,"rds/cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+
+
+```
+
+#######################################
+
+#### 3. 模型1验证与预测 ###
+
+#######################################
+
+### 3.1 探究验证数据(zhuying人neocortex)误差
+
+## A. Model-1 
+
+# 注：>154天的样本预测年龄比真实年龄小很多，不适用于此model
+#     <154天的样本预测年龄跟真实年龄差不多，适用于此model
+```{r comparison1}
+trainErr.v1.min <- predict(cvfit.v1,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.min")
+trainErr.v1.1se <- predict(cvfit.v1,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.1se")
+
+trainErr.v1 <- data.frame(dayPred.s1.1se = 2^as.data.frame(trainErr.v1.1se)$lambda.1se,
+                          dayPred.s1.min = 2^as.data.frame(trainErr.v1.min)$lambda.min,
+                          dayReal = age.merge2.zhuHNeo.s1,
+                          row.names = rownames(rpkm.merge2.zhuHNeo.t.s1))
+saveRDS(trainErr.v1,"rds/trainErr-merge2_zhuHNeoLe997.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+trainErr.v1
+```
+
+## B. Model-2
+
+# 注：>154天的样本预测年龄比真实年龄小很多，不适用于此model
+#     <154天的样本预测年龄跟真实年龄差不多，适用于此model
+```{r comparison1}
+trainErr.v2.min <- predict(cvfit.v2,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.min")
+trainErr.v2.1se <- predict(cvfit.v2,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.1se")
+
+trainErr.v2 <- data.frame(dayPred.s1.1se = 2^as.data.frame(trainErr.v2.1se)$lambda.1se,
+                          dayPred.s1.min = 2^as.data.frame(trainErr.v2.min)$lambda.min,
+                          dayReal = age.merge2.zhuHNeo.s1,
+                          row.names = rownames(rpkm.merge2.zhuHNeo.t.s1))
+saveRDS(trainErr.v2,"rds/trainErr-merge2_zhuHNeoLe997.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+trainErr.v2
+```
+
+## C. Model-3
+
+# 注：>154天的样本预测年龄比真实年龄小很多，不适用于此model
+#     <154天的样本预测年龄跟真实年龄差不多，适用于此model
+```{r comparison1}
+trainErr.v3.min <- predict(cvfit.v3,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.min")
+trainErr.v3.1se <- predict(cvfit.v3,newx = rpkm.merge2.zhuHNeo.t.s1,s = "lambda.1se")
+
+trainErr.v3 <- data.frame(dayPred.s1.1se = 2^as.data.frame(trainErr.v3.1se)$lambda.1se,
+                          dayPred.s1.min = 2^as.data.frame(trainErr.v3.min)$lambda.min,
+                          dayReal = age.merge2.zhuHNeo.s1,
+                          row.names = rownames(rpkm.merge2.zhuHNeo.t.s1))
+saveRDS(trainErr.v3,"rds/trainErr-merge2_zhuHNeoLe997.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+trainErr.v3
+```
+
+### 3.2 Predict Rhesus
+
+## A. Model-1
+# 注：预测的非常不准确，这里忽略，因为人-猴对应关系用以zhuying人neocortex作为训练数据预测的即可。
+
+```{r predictRhesus1}
+predRhesus.v1.1se <- predict(cvfit.v1,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.1se")
+predRhesus.v1.min <- predict(cvfit.v1,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.min")
+predictRhesus.v1 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predRhesus.v1.1se)$lambda.1se,
+                               dayPred.s1.min = 2^as.data.frame(predRhesus.v1.min)$lambda.min,
+                               dayReal = age.merge2.moreiraRBrain.s1,
+                               row.names = rownames(rpkm.merge2.moreiraRBrain.t.s1))
+
+saveRDS(predictRhesus.v1,"rds/predictRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+predictRhesus.v1
+```
+## B. Model-2
+# 注：预测的非常不准确，这里忽略，因为人-猴对应关系用以zhuying人neocortex作为训练数据预测的即可。
+
+```{r predictRhesus1}
+predRhesus.v2.1se <- predict(cvfit.v2,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.1se")
+predRhesus.v2.min <- predict(cvfit.v2,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.min")
+predictRhesus.v2 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predRhesus.v2.1se)$lambda.1se,
+                               dayPred.s1.min = 2^as.data.frame(predRhesus.v2.min)$lambda.min,
+                               dayReal = age.merge2.moreiraRBrain.s1,
+                               row.names = rownames(rpkm.merge2.moreiraRBrain.t.s1))
+
+saveRDS(predictRhesus.v2,"rds/predictRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+predictRhesus.v2
+```
+
+## C. Model-3
+# 注：预测的相对比较准确！出乎意料！
+```{r predictRhesus1}
+predRhesus.v3.1se <- predict(cvfit.v3,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.1se")
+predRhesus.v3.min <- predict(cvfit.v3,newx = rpkm.merge2.moreiraRBrain.t.s1,s="lambda.min")
+predictRhesus.v3 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predRhesus.v3.1se)$lambda.1se,
+                               dayPred.s1.min = 2^as.data.frame(predRhesus.v3.min)$lambda.min,
+                               dayReal = age.merge2.moreiraRBrain.s1,
+                               row.names = rownames(rpkm.merge2.moreiraRBrain.t.s1))
+
+saveRDS(predictRhesus.v3,"rds/predictRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+predictRhesus.v3
+```
+
+### 3.3 Predict Mouse
+
+## Model-1
+# 非常不准！
+```{r predictMouse1-Model-1}
+
+### Model-1
+predMouse.v1.1se <- predict(cvfit.v1,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.1se")
+predMouse.v1.min <- predict(cvfit.v1,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.min")
+
+predictMouse.v1 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predMouse.v1.1se)$lambda.1se,
+                              dayPred.s1.min = 2^as.data.frame(predMouse.v1.min)$lambda.min,
+                              dayReal = age.merge2.moreiraMBrain.s1,
+                              row.names = rownames(rpkm.merge2.moreiraMBrain.t.s1))
+saveRDS(predictMouse.v1,"rds/predictMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+predictMouse.v1 
+```
+
+## Model-2
+# 非常不准！
+```{r predictMouse1-Model-2}
+
+### Model-2
+predMouse.v2.1se <- predict(cvfit.v2,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.1se")
+predMouse.v2.min <- predict(cvfit.v2,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.min")
+
+predictMouse.v2 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predMouse.v2.1se)$lambda.1se,
+                              dayPred.s1.min = 2^as.data.frame(predMouse.v2.min)$lambda.min,
+                              dayReal = age.merge2.moreiraMBrain.s1,
+                              row.names = rownames(rpkm.merge2.moreiraMBrain.t.s1))
+saveRDS(predictMouse.v2,"rds/predictMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+predictMouse.v2
+```
+
+## Model-3
+# 相对准确！
+```{r predictMouse1-Model-3}
+
+### Model-2
+predMouse.v3.1se <- predict(cvfit.v3,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.1se")
+predMouse.v3.min <- predict(cvfit.v3,newx = rpkm.merge2.moreiraMBrain.t.s1,s="lambda.min")
+
+predictMouse.v3 <- data.frame(dayPred.s1.1se = 2^as.data.frame(predMouse.v3.1se)$lambda.1se,
+                              dayPred.s1.min = 2^as.data.frame(predMouse.v3.min)$lambda.min,
+                              dayReal = age.merge2.moreiraMBrain.s1,
+                              row.names = rownames(rpkm.merge2.moreiraMBrain.t.s1))
+saveRDS(predictMouse.v3,"rds/predictMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+predictMouse.v3
+```
+
+
+
+### 3.4. 整合预测结果并绘图（人-猴/人-鼠对应关系）
+
+
+## Model-1
+### 1. 3186天
+### 2. alpha：0.9
+### 3. lambda.min
+
+# A. 整合预测结果
+
+```{r integration}
+
+### Rhesus
+predictRhesus.v1.1 <- predictRhesus.v1 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>%
+  mutate(individual = paste0("Rhesus",1:nrow(.)))
+saveRDS(predictRhesus.v1.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+write.table(predictRhesus.v1.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+
+### Mouse
+predictMouse.v1.1 <- predictMouse.v1 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>% 
+  mutate(individual = paste0("Mouse",1:nrow(.))) %>% 
+  select(c(individual,dayReal,dayPredMedian))
+saveRDS(predictMouse.v1.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+write.table(predictMouse.v1.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+```
+
+# B. 将猴鼠预测年龄与人Combine
+```{r combine}
+age.merge2.zhuHNeo.s1
+
+predictCombined.v1 <- data.frame(individual = names(age.merge2.zhuHNeo.s1),
+                                 dayReal = age.merge2.zhuHNeo.s1) %>%
+  unique() %>% 
+  mutate(dayPredMedian = dayReal) %>% 
+  select(c(individual,dayReal,dayPredMedian)) %>% 
+  rbind(.,predictRhesus.v1.1) %>% # merge predictRhesus.v1.1
+  rbind(.,predictMouse.v1.1) %>% # # merge predictMouse.v1.1
+  mutate(species = c(rep("Human",21),
+                     rep("Rhesus",14),
+                     rep("Mouse",14)))
+
+p.predictCombined.v1  <- predictCombined.v1 %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  scale_y_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed")
+p.predictCombined.v1
+
+saveRDS(predictCombined.v1,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+saveRDS(p.predictCombined.v1,"rds/plot.combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.rds")
+write.table(predictCombined.v1,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.txt",col.names = T,row.names = F,sep = "\t",quote = F)
+
+pdf("image/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le3186-alpha0.9.pdf",width = 10,height = 9)
+ p.predictCombined.v1
+dev.off()
+
+```
+
+
+## Model-2
+### 1. 18516天
+### 2. alpha：0.3
+### 3. lambda.min
+
+# A. 整合预测结果
+
+```{r integration}
+
+### Rhesus
+predictRhesus.v2.1 <- predictRhesus.v2 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>%
+  mutate(individual = paste0("Rhesus",1:nrow(.)))
+saveRDS(predictRhesus.v2.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+write.table(predictRhesus.v2.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+
+### Mouse
+predictMouse.v2.1 <- predictMouse.v2 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>% 
+  mutate(individual = paste0("Mouse",1:nrow(.))) %>% 
+  select(c(individual,dayReal,dayPredMedian))
+saveRDS(predictMouse.v2.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+write.table(predictMouse.v2.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+```
+
+# B. 将猴鼠预测年龄与人Combine
+```{r combine}
+age.merge2.zhuHNeo.s1
+
+predictCombined.v2 <- data.frame(individual = names(age.merge2.zhuHNeo.s1),
+                                 dayReal = age.merge2.zhuHNeo.s1) %>%
+  unique() %>% 
+  mutate(dayPredMedian = dayReal) %>% 
+  select(c(individual,dayReal,dayPredMedian)) %>% 
+  rbind(.,predictRhesus.v2.1) %>% # merge predictRhesus.v2.1
+  rbind(.,predictMouse.v2.1) %>% # # merge predictMouse.v2.1
+  mutate(species = c(rep("Human",21),
+                     rep("Rhesus",14),
+                     rep("Mouse",14)))
+
+p.predictCombined.v2  <- predictCombined.v2 %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  scale_y_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed")
+p.predictCombined.v2
+
+saveRDS(predictCombined.v2,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+saveRDS(p.predictCombined.v2,"rds/plot.combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.rds")
+write.table(predictCombined.v2,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.txt",col.names = T,row.names = F,sep = "\t",quote = F)
+
+pdf("image/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le18516-alpha0.3.pdf",width = 10,height = 9)
+ p.predictCombined.v2
+dev.off()
+
+```
+
+## Model-3
+### 1. 487天
+### 2. alpha：0.2
+### 3. lambda.min
+
+# A. 整合预测结果
+
+```{r integration}
+
+### Rhesus
+predictRhesus.v3.1 <- predictRhesus.v3 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>%
+  mutate(individual = paste0("Rhesus",1:nrow(.)))
+saveRDS(predictRhesus.v3.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+write.table(predictRhesus.v3.1,"rds/integRhesus-merge2_moreiraRBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+
+### Mouse
+predictMouse.v3.1 <- predictMouse.v3 %>% 
+  select(c(dayPred.s1.min,dayReal)) %>% 
+  group_by(dayReal) %>% 
+  summarise(dayPredMedian = median(dayPred.s1.min)) %>% 
+  mutate(individual = paste0("Mouse",1:nrow(.))) %>% 
+  select(c(individual,dayReal,dayPredMedian))
+saveRDS(predictMouse.v3.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+write.table(predictMouse.v3.1,"rds/integMouse-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.txt",
+            col.names = T,row.names = F,sep = "\t",quote = F)
+```
+
+# B. 将猴鼠预测年龄与人Combine
+```{r combine}
+age.merge2.zhuHNeo.s1
+
+predictCombined.v3 <- data.frame(individual = names(age.merge2.zhuHNeo.s1),
+                                 dayReal = age.merge2.zhuHNeo.s1) %>%
+  unique() %>% 
+  mutate(dayPredMedian = dayReal) %>% 
+  select(c(individual,dayReal,dayPredMedian)) %>% 
+  rbind(.,predictRhesus.v3.1) %>% # merge predictRhesus.v3.1
+  rbind(.,predictMouse.v3.1) %>% # # merge predictMouse.v3.1
+  mutate(species = c(rep("Human",21),
+                     rep("Rhesus",14),
+                     rep("Mouse",14)))
+
+### Plot H-R-M
+p.predictCombined.v3  <- predictCombined.v3 %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  scale_y_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed") + 
+  Seurat::RotatedAxis()
+p.predictCombined.v3
+
+### Plot H-M
+
+p.predictCombined.v3.1  <- predictCombined.v3 %>% 
+  subset(species != "Rhesus") %>%
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  scale_y_continuous(limits = c(0,1500),breaks = c(0,18.5,85,120,150,seq(250,1500,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed") + 
+  Seurat::RotatedAxis()
+p.predictCombined.v3.1
+
+saveRDS(predictCombined.v3,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+saveRDS(p.predictCombined.v3,"rds/plot.combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+saveRDS(p.predictCombined.v3.1,"rds/plot.combineHM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+write.table(predictCombined.v3,"rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.txt",col.names = T,row.names = F,sep = "\t",quote = F)
+
+pdf("image/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.pdf",width = 10,height = 9)
+ p.predictCombined.v3
+ p.predictCombined.v3.1
+dev.off()
+
+```
+
+
+```{r temp112}
+
+```

@@ -1,0 +1,408 @@
+---
+title: "pre_process"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+#### 该脚本用于处理、合并人猴鼠RPKM数据及metadata信息，包括以下几个数据集
+####（1）Zhuying人猴RPKM数据
+###   a. Zhuying人猴RPKM - All
+###   b. Zhuying人猴RPKM - neocortex
+###   c. Zhuying人猴metadata - All
+###   d. Zhuying人猴metadata - neocortex
+###   e. Zhuying人猴age - All
+###   f. Zhuying人猴age - neocortex
+
+#### (2) Philipp人RPKM数据
+###   a. Philipp人RPKM - All
+###   b. Philipp人metadata -All
+
+#### (3) Moreira人猴鼠RPKM数据
+###   a. Moreira人猴鼠RPKM - All
+###   b. Moreira人猴鼠RPKM - Forebrain/Brain
+###   c. Moreira人猴鼠metadata - Forebrain/Brain
+
+#### (4) 合并Zhuying人猴neocortex、Philipp人和Moreira人猴鼠Forebrain data （三个数据集）
+####   4.1 按同源基因合并
+####   4.2 抽取Protein-coding gene
+###   a. 合并RPKM
+###   b. 合并age
+
+###    4.3 取上述合并后的subset
+###   a. 取zhuying人neocortex
+###   b. 取zhuying猴neocortex
+###   c. 取philipp人
+###   d. 取moreira人forebrain
+###   e. 取moreira猴forebrain
+###   f. 取moreira鼠forebrain
+
+#### (5) 合并Zhuying人猴neocortex和Moreira人猴鼠Forebrain data （两个数据集）
+####   5.1 按同源基因合并
+####   5.2 抽取Protein-coding gene
+###   a. 合并RPKM
+###   b. 合并age
+
+###    5.3 取上述合并后的subset
+###   a. 取zhuying人neocortex
+###   b. 取zhuying猴neocortex
+###   c. 取philipp人
+###   d. 取moreira人forebrain
+###   e. 取moreira猴forebrain
+###   f. 取moreira鼠forebrain
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+tidyverse_conflicts()
+```
+
+#### 1. Zhuying人猴
+
+### 1.1 RPKM - All
+
+
+```{r ,include=FALSE}
+# install.packages("conflicted")
+library(conflicted)
+# conflict_prefer("select","dplyr")
+detach("package:biomaRt", unload = TRUE)
+```
+
+
+```{r rpkm}
+rpkm.zhu <- read.delim("/home/user/data2/lit/project/spatialTrans/2018-science-zhuying/macaque_mRNASeq/processed/nhp_development_RPKM_rmTechRep.txt",header = T)
+rpkm.zhu <- rpkm.zhu %>% 
+  rownames_to_column('gene_xsanno') %>% 
+  mutate(gene_Human = sub("\\..*?\\|.*$","",gene_xsanno)) %>% 
+  select(2:ncol(.)) %>% 
+  column_to_rownames('gene_Human')
+
+rpkm.zhu.t <- rpkm.zhu %>% t()
+
+saveRDS(rpkm.zhu,"/home/user/data2/lit/project/spatialTrans/2018-science-zhuying/rpkm.zhuying.all.0.rds")
+saveRDS(rpkm.zhu.t,"/home/user/data2/lit/project/spatialTrans/2018-science-zhuying/rpkm.zhuying.all.1.rds")
+```
+
+### 1.2 Metadata -All
+
+## A. Metadata
+```{r metadata}
+meta.zhu.rhesus <- read.delim("/media/uplee/upleeDisk2/dataset/paper/2018-science-zhuying/macaque_mRNASeq/metadata/mRNA-seq_sample.metadata.txt",header = T)
+meta.zhu.human <- read.delim("/media/uplee/upleeDisk2/dataset/paper/2018-science-zhuying/human_mRNASeq/metadata/mRNA-seq_Sample_metadata.txt",header = T)
+
+meta.zhu.human <- meta.zhu.human[,c("Braincode","Age","Days")]
+meta.zhu.rhesus <- meta.zhu.rhesus[,c("Brain","Age","Days")]
+colnames(meta.zhu.rhesus) <- c("sample","age","days")
+colnames(meta.zhu.human) <- c("sample","age","days")
+
+meta.zhu <- rbind(meta.zhu.human,meta.zhu.rhesus)
+
+saveRDS(meta.zhu,"rds/meta.zhuying.all.rds")
+```
+
+## B. Age in days (whose order is in line with rpkm.zhu/rpkm.zhu.t)
+```{r age}
+age.zhu <- setNames(meta.zhu$days,meta.zhu$sample)[sub("\\..*$","",rownames(rpkm.zhu.t))]
+
+saveRDS(age.zhu,"rds/age.zhuying.all.rds")
+```
+
+### 1.3 RPKM - neocortex
+```{r rpkm}
+subsetIdx1 <- grep("VFC|DFC|OFC|MFC|M1C|S1C|IPC|A1C|STC|ITC|V1C",colnames(rpkm.zhu))
+rpkm.zhu.neo <- rpkm.zhu[,subsetIdx1]
+rpkm.zhu.neo.t <- rpkm.zhu.t[subsetIdx1,]
+
+saveRDS(rpkm.zhu.neo,"rds/rpkm.zhuying.neocortex.0.rds")
+saveRDS(rpkm.zhu.neo.t,"rds/rpkm.zhuying.neocortex.1.rds")
+```
+
+
+### 1.4 Metadata - neocortex
+
+## A. Metada (无需处理)
+
+## B. Age in days (whose order is in line with rpkm.zhu.neo/rpkm.zhu.neo.t)
+```{r age}
+age.zhu.neo <- age.zhu[subsetIdx1]
+saveRDS(age.zhu.neo,"rds/age.zhuying.neocortex.rds")
+```
+
+
+#### 2. Philipp人
+
+### 2.1 RPKM -All
+```{r rpkm}
+rpkm.phiH <- read.delim("/media/uplee/upleeDisk2/dataset/paper/2014-RNA-philipp_humanMacaque_PFC_RNASeq/GSE51264_rpkm_human.tsv",header = T)
+rpkm.phiH <- rpkm.phiH[!grepl("CUFF",rownames(rpkm.phiH)),] # 去除CUFF，因为duplicated rowname
+rownames(rpkm.phiH) <- sub("\\..*$","",rownames(rpkm.phiH))
+rpkm.phiH.t <- rpkm.phiH %>% t()
+
+saveRDS(rpkm.phiH,"rds/rpkm.philipp.human.0.rds")
+saveRDS(rpkm.phiH.t,"rds/rpkm.philipp.human.1.rds")
+```
+
+### 2.2 Metadata(人和猴) -All
+## A. Meta
+```{r meta}
+meta.phi <- read.delim("/media/uplee/upleeDisk2/dataset/paper/2014-RNA-philipp_humanMacaque_PFC_RNASeq/philipp_rnaseq_meta.txt",header = T)
+meta.phi$days <- 365 * meta.phi$Year + meta.phi$Day + 266
+meta.phi$age <- paste0("P",meta.phi$Year,"y")
+meta.phi <-meta.phi[,c("Work_ID","Species","age","days")]
+colnames(meta.phi) <- c("sample","species","age","days")
+
+saveRDS(meta.phi,"rds/meta.philipp.all.rds")
+```
+## B. Age in days (whose order is in line with rpkm.phiH/rpkm.phiH.t)
+```{r age}
+age.phiH <- setNames(meta.phi$days,meta.phi$sample)[rownames(rpkm.phiH.t)]
+
+saveRDS(age.phiH,"rds/age.philipp.human.rds")
+```
+
+#### 3. Moreira人猴鼠
+
+### 3.1 RPKM -All
+```{r rpkm}
+
+### 读入原始数据
+rpkm.moreira.human <- read.delim("/opt/Project/compSaptialTrans/ageCorres/data/Human_rpkm.txt",sep = " ")
+rpkm.moreira.macaque <- read.delim("/opt/Project/compSaptialTrans/ageCorres/data/Macaque_rpkm.txt",sep = " ")
+rpkm.moreira.mouse <- read.delim("/opt/Project/compSaptialTrans/ageCorres/data/Mouse_rpkm.txt",sep = " ")
+
+### 读入人猴鼠homologous gene list
+homolog.hrm <- read.delim("/opt/Project/compSaptialTrans/ageCorres/data/human_macaque_mouse.ortho1to1.txt")
+colnames(homolog.hrm) <- c("ensID.h","symbol.h","ensID.r","symbol.r","type.r","ensID.m","symbol.m","type.m")
+
+### Merge人猴鼠所有样本
+rpkm.moreira <- homolog.hrm %>% 
+  select(c(ensID.h,ensID.r,ensID.m)) %>% 
+  merge(.,rpkm.moreira.human,by.x = "ensID.h", by.y = "Names") %>% 
+  merge(.,rpkm.moreira.macaque,by.x = "ensID.r", by.y = "Names") %>% 
+  merge(.,rpkm.moreira.mouse,by.x = "ensID.m", by.y = "Names") %>% 
+  select(c(3:ncol(.))) %>% 
+  column_to_rownames('ensID.h') %>% 
+  setNames(.,sub("Senior","senior",colnames(.))) %>% 
+  setNames(.,c(paste0("Human.",colnames(.)[1:297]),
+               paste0("Rhesus.",colnames(.)[298:462]),
+               paste0("Mouse.",colnames(.)[463:778])))
+
+rpkm.moreira.t <- rpkm.moreira %>% t()
+
+saveRDS(rpkm.moreira,"rds/rpkm.moreira.humanRhesusMouse.0.rds")
+saveRDS(rpkm.moreira.t,"rds/rpkm.moreira.humanRhesusMouse.1.rds")
+```
+
+### 3.2 Metadata -All (无所有样本的metadata，因为是手输的，只有人猴鼠forebrain的metadata)
+
+### 3.3 RPKM - forebrain
+```{r rpkm}
+subsetIdx2 <- c(1:53,298:323,463:517) # brain samples in rows
+rpkm.moreira.brain <- rpkm.moreira[,subsetIdx2]
+rpkm.moreira.brain.t <- rpkm.moreira.t[subsetIdx2,]
+
+saveRDS(rpkm.moreira.brain,"rds/rpkm.moreira.humanRhesusMouse.brain.0.rds")
+saveRDS(rpkm.moreira.brain.t,"rds/rpkm.moreira.humanRhesusMouse.brain.1.rds")
+```
+
+### 3.4 Metadata -forebrain
+
+## A. Meta
+```{r metadata}
+meta.moreira.brain <- read.delim("/opt/Project/compSaptialTrans/ageCorres/data/meta.moreira.hrm.brain.txt")
+meta.moreira.brain$sample <- colnames(rpkm.moreira.brain)
+
+saveRDS(meta.moreira.brain,"rds/meta.moreira.humanRhesusMouse.brain.rds")
+```
+
+## B. Age in days (whose order is in line with rpkm.moreira.brain/rpkm.moreira.brain.t)
+```{r age}
+age.moreira.brain <- setNames(meta.moreira.brain$day,meta.moreira.brain$sample)
+
+saveRDS(age.moreira.brain,"rds/age.moreira.humanRhesusMouse.brain.rds")
+```
+
+#### 4. 合并Zhuying人猴neocortex、Philipp人和Moreira人猴鼠Forebrain data
+
+### 4.1 Merge RPKM
+```{r rpkm}
+rpkm.zhu.neo
+rpkm.phiH
+rpkm.moreira.brain
+
+### 读入Protein-coding gene list
+protein.h <- read.delim("/media/uplee/upleeDisk2/dataset/database/humanGeneType.txt")
+
+### rpkm.merge
+rpkm.merge <- rpkm.zhu.neo %>% 
+  merge(.,rpkm.phiH,by=0)  %>% # merge philipp人
+  column_to_rownames("Row.names") %>% 
+  merge(.,rpkm.moreira.brain,by=0) %>% 
+  column_to_rownames("Row.names")
+rpkm.merge.t <- rpkm.merge %>% t()
+
+### rpkm.merge.protein (抽取protein-coding gene；其实跟rpkm.merge完全一样)
+rpkm.merge.protein <- rpkm.merge[rownames(rpkm.merge) %in% protein.h$Ensembl_Gene_ID,]
+rpkm.merge.protein.t <- rpkm.merge.protein %>% t()
+
+saveRDS(rpkm.merge,"rds/rpkm.merge.brain.0.rds")
+saveRDS(rpkm.merge.t,"rds/rpkm.merge.brain.1.rds")
+saveRDS(rpkm.merge.protein,"rds/rpkm.merge.protein.brain.0.rds")
+saveRDS(rpkm.merge.protein.t,"rds/rpkm.merge.protein.brain.1.rds")
+```
+### 4.2 Merge Age
+```{r age}
+age.merge <- c(age.zhu.neo,
+               age.phiH,
+               age.moreira.brain)
+saveRDS(age.merge,"rds/age.merge.brain.rds")
+```
+
+### 4.3. 取上述合并后的subset
+###  a. 取zhuying人neocortex
+###  b. 取zhuying猴neocortex
+###  c. 取philipp人
+###  d. 取moreira人forebrain
+###  e. 取moreira猴forebrain
+###  f. 取moreira鼠forebrain
+
+```{r subset}
+###  a. 取zhuying人neocortex
+subsetIdx3 <- c(129:439)
+rpkm.merge.zhuHNeo <- rpkm.merge[,subsetIdx3]
+rpkm.merge.zhuHNeo.t <- rpkm.merge.t[subsetIdx3,]
+age.merge.zhuHNeo <- age.merge[subsetIdx3]
+###  b. 取zhuying猴neocortex
+subsetIdx4 <- c(1:128,440:568)
+rpkm.merge.zhuRNeo <- rpkm.merge[,subsetIdx4]
+rpkm.merge.zhuRNeo.t <- rpkm.merge.t[subsetIdx4,]
+age.merge.zhuRNeo <- age.merge[subsetIdx4]
+###  c. 取philipp人
+subsetIdx5 <- c(569:606)
+rpkm.merge.phiHPFC <- rpkm.merge[,subsetIdx5]
+rpkm.merge.phiHPFC.t <- rpkm.merge.t[subsetIdx5,]
+age.merge.phiHPFC <- age.merge[subsetIdx5]
+###  d. 取moreira人forebrain
+subsetIdx6 <- c(607:659)
+rpkm.merge.moreiraHBrain <- rpkm.merge[,subsetIdx6]
+rpkm.merge.moreiraHBrain.t <- rpkm.merge.t[subsetIdx6,]
+age.merge.moreiraHBrain <- age.merge[subsetIdx6]
+###  e. 取moreira猴forebrain
+subsetIdx7 <- c(660:685)
+rpkm.merge.moreiraRBrain <- rpkm.merge[,subsetIdx7]
+rpkm.merge.moreiraRBrain.t <- rpkm.merge.t[subsetIdx7,]
+age.merge.moreiraRBrain <- age.merge[subsetIdx7]
+###  f. 取moreira鼠forebrain
+subsetIdx8 <- c(686:740)
+rpkm.merge.moreiraMBrain <- rpkm.merge[,subsetIdx8]
+rpkm.merge.moreiraMBrain.t <- rpkm.merge.t[subsetIdx8,]
+age.merge.moreiraMBrain <- age.merge[subsetIdx8]
+
+saveRDS(rpkm.merge.zhuHNeo,"rds/rpkm.merge.brain.zhuHNeo.0.rds")
+saveRDS(rpkm.merge.zhuRNeo,"rds/rpkm.merge.brain.zhuRNeo.0.rds")
+saveRDS(rpkm.merge.phiHPFC,"rds/rpkm.merge.brain.phiHPFC.0.rds")
+saveRDS(rpkm.merge.moreiraHBrain,"rds/rpkm.merge.brain.moreiraHBrain.0.rds")
+saveRDS(rpkm.merge.moreiraRBrain,"rds/rpkm.merge.brain.moreiraRBrain.0.rds")
+saveRDS(rpkm.merge.moreiraMBrain,"rds/rpkm.merge.brain.moreiraMBrain.0.rds")
+
+saveRDS(rpkm.merge.zhuHNeo.t,"rds/rpkm.merge.brain.zhuHNeo.1.rds")
+saveRDS(rpkm.merge.zhuRNeo.t,"rds/rpkm.merge.brain.zhuRNeo.1.rds")
+saveRDS(rpkm.merge.phiHPFC.t,"rds/rpkm.merge.brain.phiHPFC.1.rds")
+saveRDS(rpkm.merge.moreiraHBrain.t,"rds/rpkm.merge.brain.moreiraHBrain.1.rds")
+saveRDS(rpkm.merge.moreiraRBrain.t,"rds/rpkm.merge.brain.moreiraRBrain.1.rds")
+saveRDS(rpkm.merge.moreiraMBrain.t,"rds/rpkm.merge.brain.moreiraMBrain.1.rds")
+
+saveRDS(age.merge.zhuHNeo,"rds/age.merge.brain.zhuHNeo.rds")
+saveRDS(age.merge.zhuRNeo,"rds/age.merge.brain.zhuRNeo.rds")
+saveRDS(age.merge.phiHPFC,"rds/age.merge.brain.phiHPFC.rds")
+saveRDS(age.merge.moreiraHBrain,"rds/age.merge.brain.moreiraHBrain.rds")
+saveRDS(age.merge.moreiraRBrain,"rds/age.merge.brain.moreiraRBrain.rds")
+saveRDS(age.merge.moreiraMBrain,"rds/age.merge.brain.moreiraMBrain.rds")
+```
+
+
+#### 5. 合并Zhuying人猴neocortex和Moreira人猴鼠Forebrain data
+
+### 5.1 Merge RPKM
+```{r rpkm}
+rpkm.zhu.neo
+rpkm.moreira.brain
+
+### 读入Protein-coding gene list
+protein.h <- read.delim("/media/uplee/upleeDisk2/dataset/database/humanGeneType.txt")
+
+### rpkm.merge
+rpkm.merge2 <- rpkm.zhu.neo %>% 
+  merge(.,rpkm.moreira.brain,by=0) %>% 
+  column_to_rownames("Row.names")
+rpkm.merge2.t <- rpkm.merge2 %>% t()
+
+### rpkm.merge.protein (抽取protein-coding gene；其实跟rpkm.merge完全一样)
+rpkm.merge2.protein <- rpkm.merge2[rownames(rpkm.merge2) %in% protein.h$Ensembl_Gene_ID,]
+rpkm.merge2.protein.t <- rpkm.merge2.protein %>% t()
+
+saveRDS(rpkm.merge2,"rds/rpkm.merge2.brain.0.rds")
+saveRDS(rpkm.merge2.t,"rds/rpkm.merge2.brain.1.rds")
+saveRDS(rpkm.merge2.protein,"rds/rpkm.merge2.protein.brain.0.rds")
+saveRDS(rpkm.merge2.protein.t,"rds/rpkm.merge2.protein.brain.1.rds")
+```
+### 5.2 Merge Age
+```{r age}
+age.merge2 <- c(age.zhu.neo,
+               age.moreira.brain)
+saveRDS(age.merge2,"rds/age.merge2.brain.rds")
+```
+
+### 5.3. 取上述合并后的subset
+###  a. 取zhuying人neocortex
+###  b. 取zhuying猴neocortex
+###  c. 取moreira人forebrain
+###  d. 取moreira猴forebrain
+###  e. 取moreira鼠forebrain
+
+```{r subset}
+###  a. 取zhuying人neocortex
+subsetIdx9 <- c(129:439)
+rpkm.merge2.zhuHNeo <- rpkm.merge2[,subsetIdx9]
+rpkm.merge2.zhuHNeo.t <- rpkm.merge2.t[subsetIdx9,]
+age.merge2.zhuHNeo <- age.merge2[subsetIdx9]
+###  b. 取zhuying猴neocortex
+subsetIdx10 <- c(1:128,440:568)
+rpkm.merge2.zhuRNeo <- rpkm.merge2[,subsetIdx10]
+rpkm.merge2.zhuRNeo.t <- rpkm.merge2.t[subsetIdx10,]
+age.merge2.zhuRNeo <- age.merge2[subsetIdx10]
+###  d. 取moreira人forebrain
+subsetIdx11 <- c(569:621)
+rpkm.merge2.moreiraHBrain <- rpkm.merge2[,subsetIdx11]
+rpkm.merge2.moreiraHBrain.t <- rpkm.merge2.t[subsetIdx11,]
+age.merge2.moreiraHBrain <- age.merge2[subsetIdx11]
+###  e. 取moreira猴forebrain
+subsetIdx12 <- c(622:647)
+rpkm.merge2.moreiraRBrain <- rpkm.merge2[,subsetIdx12]
+rpkm.merge2.moreiraRBrain.t <- rpkm.merge2.t[subsetIdx12,]
+age.merge2.moreiraRBrain <- age.merge2[subsetIdx12]
+###  f. 取moreira鼠forebrain
+subsetIdx13 <- c(648:702)
+rpkm.merge2.moreiraMBrain <- rpkm.merge2[,subsetIdx13]
+rpkm.merge2.moreiraMBrain.t <- rpkm.merge2.t[subsetIdx13,]
+age.merge2.moreiraMBrain <- age.merge2[subsetIdx13]
+
+saveRDS(rpkm.merge2.zhuHNeo,"rds/rpkm.merge2.brain.zhuHNeo.0.rds")
+saveRDS(rpkm.merge2.zhuRNeo,"rds/rpkm.merge2.brain.zhuRNeo.0.rds")
+saveRDS(rpkm.merge2.moreiraHBrain,"rds/rpkm.merge2.brain.moreiraHBrain.0.rds")
+saveRDS(rpkm.merge2.moreiraRBrain,"rds/rpkm.merge2.brain.moreiraRBrain.0.rds")
+saveRDS(rpkm.merge2.moreiraMBrain,"rds/rpkm.merge2.brain.moreiraMBrain.0.rds")
+
+saveRDS(rpkm.merge2.zhuHNeo.t,"rds/rpkm.merge2.brain.zhuHNeo.1.rds")
+saveRDS(rpkm.merge2.zhuRNeo.t,"rds/rpkm.merge2.brain.zhuRNeo.1.rds")
+saveRDS(rpkm.merge2.moreiraHBrain.t,"rds/rpkm.merge2.brain.moreiraHBrain.1.rds")
+saveRDS(rpkm.merge2.moreiraRBrain.t,"rds/rpkm.merge2.brain.moreiraRBrain.1.rds")
+saveRDS(rpkm.merge2.moreiraMBrain.t,"rds/rpkm.merge2.brain.moreiraMBrain.1.rds")
+
+saveRDS(age.merge2.zhuHNeo,"rds/age.merge2.brain.zhuHNeo.rds")
+saveRDS(age.merge2.zhuRNeo,"rds/age.merge2.brain.zhuRNeo.rds")
+saveRDS(age.merge2.moreiraHBrain,"rds/age.merge2.brain.moreiraHBrain.rds")
+saveRDS(age.merge2.moreiraRBrain,"rds/age.merge2.brain.moreiraRBrain.rds")
+saveRDS(age.merge2.moreiraMBrain,"rds/age.merge2.brain.moreiraMBrain.rds")
+```

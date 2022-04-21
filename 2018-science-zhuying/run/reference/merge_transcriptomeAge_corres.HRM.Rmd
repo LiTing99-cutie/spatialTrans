@@ -1,0 +1,79 @@
+---
+title: "merge_transcriptomeAge_corres.HRM.Rmd"
+output: html_document
+---
+
+## 这个脚本合并transcriptomeAge预测的人猴/人鼠发育对应关系。其中，
+# （1）人猴对应关系：采用transcriptomeAge_humanRhesusMouse.Rmd中Model1（cvfit.s1：997天；alpha1；lambda.1se）
+# （2）人鼠对应关系：采用transcriptomeAge_humanMouse.Rmd中Model3（cvfit.v3：487天（其实跟997天一致，因为487~997之间无样本）：487天；alpha0.2；lambda.min
+## 将上述两种对应关系合并后绘图。
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+#### 1. Prepare Input
+
+```{r prepInput}
+corres.hm <- readRDS("rds/combineHRM-merge2_moreiraMBrain.cvfit-merge2_brain_moreiraHBrain_le487-alpha0.2.rds")
+corres.hr <- readRDS("rds/combineHRM-merge_zhuRNeo.cvfit-merge_brain_zhuHNeo_le997-alpha1.rds")
+```
+
+#### 2. Merge H-M and H-R correspondence
+```{r merge}
+corres.hrm <- corres.hr %>% 
+  subset(species != "Mouse") %>% 
+  rbind(.,corres.hm[corres.hm$species == "Mouse",])
+saveRDS(corres.hrm,"rds/corres.HRM.rds")
+write.table(corres.hrm,"rds/corres.HRM.txt",col.names = T,row.names = F,sep = "\t",quote = F)
+```
+
+#### 3. Plot H-M-R correspondence
+```{r plot}
+
+### range1 - 0~1000天
+p.corres.hrm  <- corres.hrm %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,1000),breaks = c(0,18.5,85,120,150,seq(250,1000,250))) + 
+  scale_y_continuous(limits = c(0,1000),breaks = c(0,18.5,85,120,150,seq(250,1000,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed") + 
+  Seurat::RotatedAxis()
+
+### range2 - 0~500天
+p.corres.hrm.1  <- corres.hrm %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,500),breaks = c(0,18.5,85,120,150,seq(250,500,250))) + 
+  scale_y_continuous(limits = c(0,500),breaks = c(0,18.5,85,120,150,seq(250,500,250))) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed") + 
+  Seurat::RotatedAxis()
+
+### range3 - 0~250天
+p.corres.hrm.2  <- corres.hrm %>% 
+  ggplot(aes(x=dayReal,y=dayPredMedian)) + 
+  geom_point(aes(color=species)) + 
+  scale_x_continuous(limits = c(0,250),breaks = c(0,18.5,85,120,130,140,150,200,250)) + 
+  scale_y_continuous(limits = c(0,250),breaks = c(0,18.5,85,120,130,140,150,200,250)) + 
+  geom_abline(slope = 1,intercept = 0,linetype = "dashed") + 
+  geom_vline(xintercept = 85,linetype = "dashed") + 
+  Seurat::RotatedAxis() + 
+  geom_hline(yintercept = 130,linetype = "dashed") + # 加y=130
+  geom_hline(yintercept = 140,linetype = "dashed") + # 加y=140
+  geom_hline(yintercept = 150,linetype = "dashed") +  # 加y=150 
+  geom_vline(xintercept = 18.5,linetype = "dashed") + 
+  geom_vline(xintercept = 130,linetype = "dashed") + 
+  geom_vline(xintercept = 140,linetype = "dashed") +
+  geom_vline(xintercept = 150,linetype = "dashed") 
+ 
+### save
+pdf("image/corres.HRM.pdf",10,9)
+  p.corres.hrm
+  p.corres.hrm.1
+  p.corres.hrm.2
+dev.off()
+```
